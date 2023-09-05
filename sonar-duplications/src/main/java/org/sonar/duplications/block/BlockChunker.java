@@ -40,64 +40,85 @@ import java.util.List;
 public class BlockChunker {
 
   private static final long PRIME_BASE = 31;
-
   private final int blockSize;
   private final long power;
 
   public BlockChunker(int blockSize) {
     this.blockSize = blockSize;
+    this.power = calculatePower(blockSize);
+  }
 
+  private long calculatePower(int blockSize) {
     long pow = 1;
     for (int i = 0; i < blockSize - 1; i++) {
-      pow = pow * PRIME_BASE;
+      pow *= PRIME_BASE;
     }
-    this.power = pow;
+    return pow;
   }
 
   public List<Block> chunk(String resourceId, List<Statement> statements) {
-    List<Statement> filtered = new ArrayList<>();
-    int i = 0;
-    while (i < statements.size()) {
-      Statement first = statements.get(i);
-      int j = i + 1;
-      while (j < statements.size() && statements.get(j).getValue().equals(first.getValue())) {
-        j++;
-      }
-      filtered.add(statements.get(i));
-      if (i < j - 1) {
-        filtered.add(statements.get(j - 1));
-      }
-      i = j;
-    }
-    statements = filtered;
-
+    statements = filterStatements(statements);
     if (statements.size() < blockSize) {
       return Collections.emptyList();
     }
-    Statement[] statementsArr = statements.toArray(new Statement[statements.size()]);
+
+    Statement[] statementsArr = statements.toArray(new Statement[0]);
     List<Block> blocks = new ArrayList<>(statementsArr.length - blockSize + 1);
-    long hash = 0;
-    int first = 0;
-    int last = 0;
-    for (; last < blockSize - 1; last++) {
-      hash = hash * PRIME_BASE + statementsArr[last].getValue().hashCode();
-    }
+
     Block.Builder blockBuilder = Block.builder().setResourceId(resourceId);
-    for (; last < statementsArr.length; last++, first++) {
+    long hash = initializeHash(statementsArr);
+
+    for (int last = blockSize - 1, first = 0; last < statementsArr.length; last++, first++) {
       Statement firstStatement = statementsArr[first];
       Statement lastStatement = statementsArr[last];
-      // add last statement to hash
-      hash = hash * PRIME_BASE + lastStatement.getValue().hashCode();
-      // create block
-      Block block = blockBuilder.setBlockHash(new ByteArray(hash))
-          .setIndexInFile(first)
-          .setLines(firstStatement.getStartLine(), lastStatement.getEndLine())
-          .build();
+
+      hash = updateHash(hash, firstStatement, lastStatement);
+      Block block = createBlock(blockBuilder, hash, first, firstStatement, lastStatement);
       blocks.add(block);
-      // remove first statement from hash
-      hash -= power * firstStatement.getValue().hashCode();
+
+      hash = removeFirstStatementFromHash(hash, firstStatement);
     }
+
     return blocks;
+  }
+
+  private List<Statement> filterStatements(List<Statement> statements) {
+    List<Statement> filtered = new ArrayList<>();
+    for (int i = 0, j; i < statements.size(); i = j) {
+      Statement first = statements.get(i);
+      j = i + 1;
+      while (j < statements.size() && statements.get(j).getValue().equals(first.getValue())) {
+        j++;
+      }
+      filtered.add(first);
+      if (i < j - 1) {
+        filtered.add(statements.get(j - 1));
+      }
+    }
+    return filtered;
+  }
+
+  private long initializeHash(Statement[] statementsArr) {
+    long hash = 0;
+    for (int i = 0; i < blockSize - 1; i++) {
+      hash = hash * PRIME_BASE + statementsArr[i].getValue().hashCode();
+    }
+    return hash;
+  }
+
+  private long updateHash(long hash, Statement firstStatement, Statement lastStatement) {
+    return hash * PRIME_BASE + lastStatement.getValue().hashCode();
+  }
+
+  private Block createBlock(Block.Builder blockBuilder, long hash, int index, Statement firstStatement, Statement lastStatement) {
+    return blockBuilder.setBlockHash(new ByteArray(hash))
+        .setIndexInFile(index)
+        .setLines(firstStatement.getStartLine(), lastStatement.getEndLine())
+        .build();
+  }
+
+  private long removeFirstStatementFromHash(long hash, Statement firstStatement) {
+    return hash - power * firstStatement.getValue().hashCode();
   }
 
   public int getBlockSize() {
