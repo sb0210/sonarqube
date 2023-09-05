@@ -37,12 +37,6 @@ import java.util.List;
  * Thus running time - O(N), where N - number of statements.
  * Implementation fully thread-safe.
  */
-package org.sonar.duplications.block;
-
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-
 public class BlockChunker {
 
   private static final long PRIME_BASE = 31;
